@@ -45,6 +45,8 @@ def handle_request(request: Request, service: UserService | None = None) -> Resp
     try:
         if request.path == "/health":
             return health_check(request)
+        if request.path == "/stats":
+            return stats(request, svc)
         if request.path == "/users" and request.method == "POST":
             return create_user(request, svc)
         if request.path.startswith("/users/") and request.method == "DELETE":
@@ -79,6 +81,14 @@ def user_id_from(request: Request) -> int:
 def health_check(request: Request) -> Response:
     """健康检查：只回 200，不碰仓储。"""
     return Response(status=200, payload={"status": "ok", "path": request.path})
+
+
+def stats(request: Request, service: UserService) -> Response:
+    """运维面板：返回用户计数与最近审计条数。"""
+    counts = service.stats()
+    if counts["total"] == 0:
+        return Response(status=200, payload={"total": 0, "empty": True})
+    return Response(status=200, payload={"total": counts["total"], "active": counts["active"]})
 
 
 def get_user(user_id: int, service: UserService) -> Response:

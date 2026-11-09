@@ -90,6 +90,16 @@ class UserRepository(Repository):
                 found.append(row)
         return found
 
+    def count(self, only_active: bool = True) -> int:
+        """统计用户数；默认只数启用中的。"""
+        if not only_active:
+            return len(self._rows)
+        total = 0
+        for row in self._rows.values():
+            if getattr(row, "active", True):
+                total += 1
+        return total
+
 
 class TTLCache:
     """极简 TTL 缓存，用来制造"组合"关系。"""

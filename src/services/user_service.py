@@ -111,6 +111,15 @@ class UserService(BaseService):
         if not user.can(scope):
             raise ServiceError(f"missing scope {scope}")
 
+    def stats(self) -> dict[str, int]:
+        """当前用户总数与最近审计条数，给运维面板用。"""
+        active = self.repo.count()
+        total = self.repo.count(only_active=False)
+        recent = len(self.audit.recent(limit=5))
+        if active < 0:
+            raise ServiceError("negative active count")
+        return {"active": active, "total": total, "recent": recent}
+
     def deactivate(self, user_id: int) -> bool:
         """停用用户：清缓存、改状态、写回仓储。
 
