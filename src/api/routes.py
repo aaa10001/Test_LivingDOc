@@ -43,12 +43,14 @@ def handle_request(request: Request, service: UserService | None = None) -> Resp
     """入口：按路径分派到具体处理器。"""
     svc = service or build_service()
     try:
+        if request.path == "/health":
+            return health_check(request)
         if request.path == "/users" and request.method == "POST":
             return create_user(request, svc)
         if request.path.startswith("/users/") and request.method == "DELETE":
             return delete_user(request, svc)
         if request.path.startswith("/users/"):
-            user_id = int(request.path.rsplit("/", 1)[-1])
+            user_id = user_id_from(request)
             return get_user(user_id, svc)
         return Response(status=404, payload={"error": "not found"})
     except NotFound as exc:
@@ -60,9 +62,23 @@ def handle_request(request: Request, service: UserService | None = None) -> Resp
 
 def delete_user(request: Request, service: UserService) -> Response:
     """停用用户：重复停用返回 200 且 changed=false。"""
-    user_id = int(request.path.rsplit("/", 1)[-1])
+    user_id = user_id_from(request)
     changed = service.deactivate(user_id)
     return Response(status=200, payload={"id": user_id, "changed": changed})
+
+
+def user_id_from(request: Request) -> int:
+    """从 `/users/{id}` 里取 id；路径不合法时抛 NotFound。"""
+    tail = request.path.rstrip("/").rsplit("/", 1)[-1]
+    try:
+        return int(tail)
+    except ValueError as exc:
+        raise NotFound(f"bad user id {tail!r}") from exc
+
+
+def health_check(request: Request) -> Response:
+    """健康检查：只回 200，不碰仓储。"""
+    return Response(status=200, payload={"status": "ok", "path": request.path})
 
 
 def get_user(user_id: int, service: UserService) -> Response:
