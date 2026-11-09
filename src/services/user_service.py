@@ -81,6 +81,21 @@ class UserService(BaseService):
         if not user.can(scope):
             raise ServiceError(f"missing scope {scope}")
 
+    def deactivate(self, user_id: int) -> bool:
+        """停用用户：清缓存、改状态、写回仓储。
+
+        返回 False 表示本来就是停用状态，调用方不需要重复通知。
+        """
+        user = self.load(user_id)
+        if getattr(user, "active", True) is False:
+            return False
+        user.active = False
+        self.repo.save(user)
+        self.cache.invalidate(f"user:{user_id}")
+        for watcher in getattr(self, "watchers", []):
+            watcher.notify(user_id)
+        return True
+
 
 class SyncService(BaseService):
     """异步同步服务：带退避重试的批量拉取。"""
