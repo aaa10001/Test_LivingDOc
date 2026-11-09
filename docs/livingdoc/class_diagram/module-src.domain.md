@@ -1,10 +1,8 @@
 @startuml
-title src.domain 模块类图
-
-class User
+title src.domain 模块类图（src/domain/base.py）
 
 abstract class Repository {
-  +find(entity_id: int): Entity|None
+  +find(entity_id: int): Entity | None
   +save(entity: Entity): Entity
   +delete(entity_id: int): bool
 }
@@ -17,41 +15,47 @@ class AdminUser {
 class TTLCache {
   +ttl_seconds
   +__init__(ttl_seconds: int = 30): None
-  +get(key: str): User|None
+  +get(key: str): User | None
   +set(key: str, value: object): None
   +invalidate(key: str): None
 }
 
 class UserRepository {
   -_next_id
-  -cache
-  +__init__(cache: TTLCache|None = None): None
-  +find(entity_id: int): User|None
+  -cache: TTLCache
+  +__init__(cache: TTLCache | None = None): None
+  +find(entity_id: int): User | None
   +save(entity: Entity): User
   +delete(entity_id: int): bool
   +by_email(email: str): list[User]
+  +count(only_active: bool = True): int
 }
+
+class User <<外部模块类型>>
+class Entity <<外部模块类型>>
+class True <<解析产物>>
 
 AdminUser --|> User : 继承
 UserRepository --|> Repository : 继承
-UserRepository ..> TTLCache : 依赖
+UserRepository *-- TTLCache : 组合
+Repository ..> Entity : 依赖
+UserRepository ..> User : 依赖
+UserRepository ..> Entity : 依赖
+UserRepository ..> True : 依赖
+TTLCache ..> User : 依赖
 
 note right of UserRepository
-  find：先查 _rows，未命中再调用 cache.get 回源；
-  save：entity 不是 User 时新建 User 并自增 _next_id，
-        写回 _rows 后调用 cache.set；
-  delete：从 _rows 弹出并调用 cache.invalidate；
-  by_email：遍历 _rows，按邮箱忽略大小写比较。
+  count 为本次新增方法：
+  分支 if not only_active 直接返回总数；
+  否则 for 遍历 _rows 并对每行 if 判断 active。
+  find 调用 TTLCache.get，get 内部再触发 invalidate；
+  save 调用 TTLCache.set，delete 调用 TTLCache.invalidate。
+  by_email 含 for + if，find 含 if。
 end note
 
-note bottom of TTLCache
-  get：条目不存在直接返回 None；
-       过期则调用 invalidate 后返回 None；
-  set：写入 (value, 过期时间) 二元组。
-end note
-
-note bottom of User
-  User 与 Entity 为外部类型，本模块源码中未给出定义，
-  此处仅作为继承与参数类型出现在关系中。
-end note
+legend right
+  静态分析把 count 的默认值字面量 True
+  误识别为类型，实际类型为 bool；
+  此处按输入保留该依赖关系。
+end legend
 @enduml

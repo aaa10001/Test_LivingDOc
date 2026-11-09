@@ -1,13 +1,14 @@
 ## src.services
 
-### UserService.deactivate
+### UserService.stats
 
-- 签名：`def deactivate(self, user_id: int) -> bool:`
-- 说明：停用指定用户，流程为先用 `self.load(user_id)` 加载用户，若 `user.active` 为 `False` 则直接返回，否则把 `active` 置为 `False` 并调用 `self.repo.save(user)` 写回仓储。随后调用 `self.cache.invalidate(f"user:{user_id}")` 清除缓存，并遍历 `self.watchers` 逐个调用 `watcher.notify(user_id)`。
+- 签名：`def stats(self) -> dict[str, int]`
+- 说明：返回当前用户总数与最近审计条数，供运维面板使用。方法通过 `self.repo.count()` 统计活跃用户数、通过 `self.repo.count(only_active=False)` 统计全部用户数，并用 `len(self.audit.recent(limit=5))` 取得最近 5 条审计记录的数量。
+- 参数表：
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `user_id` | `int` | 是 | 要停用的用户标识，用于 `self.load(user_id)` 加载用户以及构造缓存键 `f"user:{user_id}"` |
+| 无 | 无 | 否 | 该方法除 `self` 外不接受任何参数 |
 
-- 返回值：返回 `bool`。返回 `True` 表示本次调用完成了状态修改、仓储写回、缓存清除与观察者通知；返回 `False` 表示用户本来就是停用状态，此时不会重复通知调用方，代码在该分支直接返回。
-- 异常：无。
+- 返回值：返回 `dict[str, int]`，包含三个键：`active`（活跃用户数）、`total`（全部用户数）、`recent`（最近审计条数，取自 `self.audit.recent(limit=5)` 的长度）。
+- 异常：当 `active < 0` 时抛出 `ServiceError("negative active count")`。
