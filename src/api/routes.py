@@ -45,6 +45,8 @@ def handle_request(request: Request, service: UserService | None = None) -> Resp
     try:
         if request.path == "/users" and request.method == "POST":
             return create_user(request, svc)
+        if request.path.startswith("/users/") and request.method == "DELETE":
+            return delete_user(request, svc)
         if request.path.startswith("/users/"):
             user_id = int(request.path.rsplit("/", 1)[-1])
             return get_user(user_id, svc)
@@ -54,6 +56,13 @@ def handle_request(request: Request, service: UserService | None = None) -> Resp
     except (ServiceError, DomainError) as exc:
         logger.warning("request failed: %s", exc)
         return Response(status=500, payload={"error": str(exc)})
+
+
+def delete_user(request: Request, service: UserService) -> Response:
+    """停用用户：重复停用返回 200 且 changed=false。"""
+    user_id = int(request.path.rsplit("/", 1)[-1])
+    changed = service.deactivate(user_id)
+    return Response(status=200, payload={"id": user_id, "changed": changed})
 
 
 def get_user(user_id: int, service: UserService) -> Response:
