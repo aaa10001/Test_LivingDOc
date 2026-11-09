@@ -39,13 +39,43 @@ class BaseService:
         raise last if last else ServiceError("retry exhausted")
 
 
-class UserService(BaseService):
-    """用户服务：仓储 + 缓存 + 权限校验。"""
+class AuditLog:
+    """最小的审计日志：写一行、读最近几行。
 
-    def __init__(self, repo: UserRepository, cache: TTLCache | None = None) -> None:
+    存内存而不是文件，示例项目不需要真的落盘；这样 `record`/`recent`
+    的 if/for 分支足够短，类图上也不必为 I/O 细节留注解。
+    """
+
+    def __init__(self, capacity: int = 100) -> None:
+        self.capacity = capacity
+        self._lines: list[str] = []
+
+    def record(self, event: str, user_id: int) -> None:
+        """记录一条事件；超过容量时丢掉最早的一条。"""
+        self._lines.append(f"{event}:{user_id}")
+        while len(self._lines) > self.capacity:
+            self._lines.pop(0)
+
+    def recent(self, limit: int = 10) -> list[str]:
+        """取最近 limit 条，倒序。"""
+        if limit <= 0:
+            return []
+        return list(reversed(self._lines[-limit:]))
+
+
+class UserService(BaseService):
+    """用户服务：仓储 + 缓存 + 权限校验 + 审计。"""
+
+    def __init__(
+        self,
+        repo: UserRepository,
+        cache: TTLCache | None = None,
+        audit: AuditLog | None = None,
+    ) -> None:
         super().__init__(retries=2)
         self.repo = repo
         self.cache = cache or TTLCache(ttl_seconds=30)
+        self.audit = audit or AuditLog()
 
     def load(self, user_id: int) -> User:
         """按 id 读用户，缓存优先，未命中回源，仍没有就抛 NotFound。"""
@@ -92,6 +122,7 @@ class UserService(BaseService):
         user.active = False
         self.repo.save(user)
         self.cache.invalidate(f"user:{user_id}")
+        self.audit.record("deactivate", user_id)
         for watcher in getattr(self, "watchers", []):
             watcher.notify(user_id)
         return True
